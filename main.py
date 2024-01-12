@@ -1,27 +1,14 @@
 import pandas as pd
 import spotipy
-from spotipy.oauth2 import SpotifyClientCredentials
 
 USER = ""
 CLIENT_ID = ""
 CLIENT_SECRET = ""
 
 
-# authenticate
-client_credentials_manager = SpotifyClientCredentials(
-    client_id=CLIENT_ID, client_secret=CLIENT_SECRET
-)
-
-# create spotify session object
-session = spotipy.Spotify(client_credentials_manager=client_credentials_manager)
-playlists = session.user_playlists(USER)["items"]
-
-for playlist in playlists:
-    playlist_name = playlist["name"]
-    uri = playlist["uri"].split(":")[-1]
-    tracks = session.playlist_tracks(uri)["items"]
+def list_to_df(tracks_list, export_csv_name=None):
     rows = []
-    for track in tracks:
+    for track in tracks_list:
         row = {
             "track": track["track"]["name"],
             "artist": track["track"]["artists"][0]["name"],
@@ -32,4 +19,44 @@ for playlist in playlists:
         rows.append(row)
     df = pd.DataFrame(rows)
     df = df.drop_duplicates("track")
-    df.to_csv(f"{playlist_name}.csv", index=False)
+    if export_csv_name:
+        df.to_csv(export_csv_name, index=False)
+
+
+def download_playlists(session):
+    playlists = session.user_playlists(USER)["items"]
+    for playlist in playlists:
+        playlist_name = playlist["name"]
+        uri = playlist["uri"].split(":")[-1]
+        tracks = session.playlist_tracks(uri)["items"]
+        list_to_df(tracks, export_csv_name=f"playlists/{playlist_name}.csv")
+
+
+def download_liked_songs(session):
+    liked_songs = []
+    offset = 0
+    saved_tracks = session.current_user_saved_tracks(limit=50, offset=offset)[
+        "items"
+    ]
+    while len(saved_tracks) != 0:
+        liked_songs.extend(saved_tracks)
+        offset += 50
+        saved_tracks = session.current_user_saved_tracks(
+            limit=50, offset=offset
+        )["items"]
+    list_to_df(liked_songs, export_csv_name="playlists/Liked songs.csv")
+
+
+token = spotipy.util.prompt_for_user_token(
+    USER,
+    "user-library-read",
+    client_id=CLIENT_ID,
+    client_secret=CLIENT_SECRET,
+    redirect_uri="http://127.0.0.1:5500",
+)
+
+
+session = spotipy.Spotify(auth=token)
+
+download_playlists(session)
+download_liked_songs(session)
